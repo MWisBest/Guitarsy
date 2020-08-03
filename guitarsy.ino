@@ -7,8 +7,14 @@
 #ifdef USE_WIRE
 #include <Wire.h>
 #else
+#ifdef __IMXRT1062__
 #include <i2c_driver.h>
 #include "imx_rt1060/imx_rt1060_i2c_driver.h"
+#endif
+#endif
+
+#ifdef __IMXRT1062__
+#include "usb_dev.h"
 #endif
 
 #define PIN_GREEN       2
@@ -57,6 +63,7 @@ volatile uint16_t current_buttons = 0x3FFF;
 volatile uint16_t current_whammy = 512;
 elapsedMicros sinceSend = 0;
 int32_t pedalCyclesOn = -1;
+int32_t bootloaderCounter = -1;
 
 #ifdef USE_WIRE
 uint8_t GH5Neck_I2C_OK() {
@@ -283,7 +290,7 @@ float   temperature;          // Stores the MPU9250 gyro internal chip temperatu
 double Temperature, Pressure; // stores MS5637 pressures sensor pressure and temperature
 float SelfTest[6];            // holds results of gyro and accelerometer self test
 
-float ax, ay, az, gx, gy, gz, mx, my, mz; // variables to hold latest sensor data values 
+float ax, ay, az, gx, gy, gz, mx, my, mz; // variables to hold latest sensor data values
 float lin_ax, lin_ay, lin_az;             // linear acceleration (acceleration with gravity component subtracted)
 
 bool newMagData = false;
@@ -741,12 +748,12 @@ void readMPU9250Data(int16_t * destination)
   uint8_t rawData[14];  // x/y/z accel register data stored here
   readBytes(MPU9250_ADDRESS, MPU9250_ACCEL_XOUT_H, 14, &rawData[0]);  // Read the 14 raw data registers into data array
   destination[0] = ((int16_t)rawData[0] << 8) | rawData[1] ;  // Turn the MSB and LSB into a signed 16-bit value
-  destination[1] = ((int16_t)rawData[2] << 8) | rawData[3] ;  
-  destination[2] = ((int16_t)rawData[4] << 8) | rawData[5] ; 
-  destination[3] = ((int16_t)rawData[6] << 8) | rawData[7] ;   
-  destination[4] = ((int16_t)rawData[8] << 8) | rawData[9] ;  
-  destination[5] = ((int16_t)rawData[10] << 8) | rawData[11] ;  
-  destination[6] = ((int16_t)rawData[12] << 8) | rawData[13] ; 
+  destination[1] = ((int16_t)rawData[2] << 8) | rawData[3] ;
+  destination[2] = ((int16_t)rawData[4] << 8) | rawData[5] ;
+  destination[3] = ((int16_t)rawData[6] << 8) | rawData[7] ;
+  destination[4] = ((int16_t)rawData[8] << 8) | rawData[9] ;
+  destination[5] = ((int16_t)rawData[10] << 8) | rawData[11] ;
+  destination[6] = ((int16_t)rawData[12] << 8) | rawData[13] ;
 }
 
 void readAccelData(int16_t * destination)
@@ -754,8 +761,8 @@ void readAccelData(int16_t * destination)
   uint8_t rawData[6];  // x/y/z accel register data stored here
   readBytes(MPU9250_ADDRESS, MPU9250_ACCEL_XOUT_H, 6, &rawData[0]);  // Read the six raw data registers into data array
   destination[0] = ((int16_t)rawData[0] << 8) | rawData[1] ;  // Turn the MSB and LSB into a signed 16-bit value
-  destination[1] = ((int16_t)rawData[2] << 8) | rawData[3] ;  
-  destination[2] = ((int16_t)rawData[4] << 8) | rawData[5] ; 
+  destination[1] = ((int16_t)rawData[2] << 8) | rawData[3] ;
+  destination[2] = ((int16_t)rawData[4] << 8) | rawData[5] ;
 }
 
 
@@ -764,8 +771,8 @@ void readGyroData(int16_t * destination)
   uint8_t rawData[6];  // x/y/z gyro register data stored here
   readBytes(MPU9250_ADDRESS, MPU9250_GYRO_XOUT_H, 6, &rawData[0]);  // Read the six raw data registers sequentially into data array
   destination[0] = ((int16_t)rawData[0] << 8) | rawData[1] ;  // Turn the MSB and LSB into a signed 16-bit value
-  destination[1] = ((int16_t)rawData[2] << 8) | rawData[3] ;  
-  destination[2] = ((int16_t)rawData[4] << 8) | rawData[5] ; 
+  destination[1] = ((int16_t)rawData[2] << 8) | rawData[3] ;
+  destination[2] = ((int16_t)rawData[4] << 8) | rawData[5] ;
 }
 
 
@@ -878,7 +885,7 @@ void setup() {
   magScale[0] = 1.0;
   magScale[1] = 1.0;
   magScale[2] = 1.0;
-  
+
   //magcalMPU9250(magBias, magScale);
 
 #ifdef DEBUG
@@ -890,6 +897,7 @@ void setup() {
 #endif
 
   pedalCyclesOn = -1;
+  bootloaderCounter = -1;
   // zero out sinceSend due to lengthy startup now
   sinceSend = 0;
 }
@@ -900,12 +908,12 @@ void setup() {
 void loop() {
   UpdateSlider();
   readMPU9250Data(MPU9250Data);
-  ax = (float)MPU9250Data[0]*aRes - accelBias[0]; // get actual g value, this depends on scale being set
-  ay = (float)MPU9250Data[1]*aRes - accelBias[1];
-  az = (float)MPU9250Data[2]*aRes - accelBias[2];
-  gx = (float)MPU9250Data[4]*gRes; // get actual gyro value, this depends on scale being set
-  gy = (float)MPU9250Data[5]*gRes;
-  gz = (float)MPU9250Data[6]*gRes;
+  ax = (float)MPU9250Data[0] * aRes - accelBias[0]; // get actual g value, this depends on scale being set
+  ay = (float)MPU9250Data[1] * aRes - accelBias[1];
+  az = (float)MPU9250Data[2] * aRes - accelBias[2];
+  gx = (float)MPU9250Data[4] * gRes; // get actual gyro value, this depends on scale being set
+  gy = (float)MPU9250Data[5] * gRes;
+  gz = (float)MPU9250Data[6] * gRes;
   UpdateWhammy();
   UpdateButtons();
 
@@ -921,6 +929,23 @@ void loop() {
   bool down = !(current_buttons & 0b10000000000000);
   bool right = !(current_buttons & 0b100000000000);
   bool left = !(current_buttons & 0b10000000000);
+
+  bool green = !(current_buttons & 0b1);
+  bool red = !(current_buttons & 0b10);
+  bool yellow = !(current_buttons & 0b100);
+  bool blue = !(current_buttons & 0b1000);
+  bool orange = !(current_buttons & 0b10000);
+  bool slidergreen = (gh5neck_curslider & 0b10000);
+  bool sliderred = (gh5neck_curslider & 0b1000);
+  bool slideryellow = (gh5neck_curslider & 0b100);
+  bool sliderblue = (gh5neck_curslider & 0b10);
+  bool sliderorange = (gh5neck_curslider & 0b1);
+
+  bool strumup = !(current_buttons & 0b100000);
+  bool strumdown = !(current_buttons & 0b1000000);
+  bool start = !(current_buttons & 0b100000000);
+  bool select = !(current_buttons & 0b10000000);
+  bool pedal = !(current_buttons & 0b1000000000);
 
   if ( up ) {
     if ( right ) {
@@ -945,58 +970,62 @@ void loop() {
   }
 
   Joystick.hat( dpadangle );
+  Joystick.button( 1, green || slidergreen ? 1 : 0 );
+  Joystick.button( 2, red || sliderred ? 1 : 0 );
+  Joystick.button( 3, yellow || slideryellow ? 1 : 0 );
+  Joystick.button( 4, blue || sliderblue ? 1 : 0 );
+  Joystick.button( 5, orange || sliderorange ? 1 : 0 );
+  Joystick.button( 6, strumup ? 1 : 0 );
+  Joystick.button( 7, strumdown ? 1 : 0 );
 
-  // GRYBO
-  Joystick.button( 1, (!(current_buttons & 0b1) || (gh5neck_curslider & 0b10000) ? 1 : 0) );
-  Joystick.button( 2, (!(current_buttons & 0b10) || (gh5neck_curslider & 0b1000) ? 1 : 0) );
-  Joystick.button( 3, (!(current_buttons & 0b100) || (gh5neck_curslider & 0b100) ? 1 : 0) );
-  Joystick.button( 4, (!(current_buttons & 0b1000) || (gh5neck_curslider & 0b10) ? 1 : 0) );
-  Joystick.button( 5, (!(current_buttons & 0b10000) || (gh5neck_curslider & 0b1) ? 1 : 0) );
-
-  // strump up/down
-  Joystick.button( 6, (!(current_buttons & 0b100000) ? 1 : 0) );
-  Joystick.button( 7, (!(current_buttons & 0b1000000) ? 1 : 0) );
-
-  
-  Joystick.button( 9, (!(current_buttons & 0b100000000) ? 1 : 0) );
-  bool pedal = !(current_buttons & 0b1000000000);
+  Joystick.button( 9, start ? 1 : 0 );
   Joystick.button( 10, pedal ? 1 : 0 );
-
-  bool select = !(current_buttons & 0b10000000);
 
   // gyro activate select as well
   select = select || gx >= 200 || gy >= 200 || gz >= 200 || gx <= -200 || gy <= -200 || gz <= -200;
 
   // pedal activate select as well but do not hold
-  if( pedal ) {
-    if( pedalCyclesOn == -1 ) {
+  if ( pedal ) {
+    if ( pedalCyclesOn == -1 ) {
       pedalCyclesOn = 1;
       select = true;
-    } else if( pedalCyclesOn < 1000 ) {
+    } else if ( pedalCyclesOn < 1000 ) {
       pedalCyclesOn++;
       select = true;
     }
   } else {
     // activate on long release as well
-    if( pedalCyclesOn == 1000 ) {
+    if ( pedalCyclesOn == 1000 ) {
       select = true;
     }
     pedalCyclesOn = -1;
   }
 
-  Joystick.button( 8, select ? 1 : 0);
+  Joystick.button( 8, select ? 1 : 0 );
   Joystick.X( current_whammy );
 
   int16_t acceleroToJY = 512;
   acceleroToJY += (ax * 512);
 
-  if( acceleroToJY > 1023 ) {
+  if ( acceleroToJY > 1023 ) {
     acceleroToJY = 1023;
-  } else if( acceleroToJY < 0 ) {
+  } else if ( acceleroToJY < 0 ) {
     acceleroToJY = 0;
   }
 
   Joystick.Y( acceleroToJY );
+
+  if ( bootloaderCounter > 10000 ) {
+    bootloaderCounter++;
+    goto skipSend;
+  }
+
+  if ( green && red && yellow && blue && orange && start && select && strumup ) {
+    bootloaderCounter++;
+    goto skipSend;
+  } else {
+    bootloaderCounter = -1;
+  }
 
   while ( sinceSend <= 1000 ) {
     ;
@@ -1005,13 +1034,41 @@ void loop() {
   sinceSend -= 1000;
 
 #ifdef DEBUG
-  Serial.println( "ax, ay, az, gx, gy, gz: " );
-  Serial.println( ax, 3 );
-  Serial.println( ay, 3 );
-  Serial.println( az, 3 );
-  Serial.println( gx, 3 );
-  Serial.println( gy, 3 );
-  Serial.println( gz, 3 );
+  /*
+    Serial.println( "ax, ay, az, gx, gy, gz: " );
+    Serial.println( ax, 3 );
+    Serial.println( ay, 3 );
+    Serial.println( az, 3 );
+    Serial.println( gx, 3 );
+    Serial.println( gy, 3 );
+    Serial.println( gz, 3 );*/
   //Serial.println(sinceSend, DEC);
 #endif
+  return;
+
+skipSend:
+  sinceSend = 0;
+  if ( bootloaderCounter >= 10000 ) {
+    if ( bootloaderCounter >= 14000 ) {
+      digitalWrite(PIN_DPADLED, LOW);
+    } else if ( bootloaderCounter >= 13000 ) {
+      digitalWrite(PIN_DPADLED, HIGH);
+    } else if ( bootloaderCounter >= 12000 ) {
+      digitalWrite(PIN_DPADLED, LOW);
+    } else if ( bootloaderCounter >= 11000 ) {
+      digitalWrite(PIN_DPADLED, HIGH);
+    } else {
+      digitalWrite(PIN_DPADLED, LOW);
+    }
+#ifdef __IMXRT1062__
+    if ( bootloaderCounter == 10000 ) {
+      usb_start_sof_interrupts(NUM_INTERFACE);
+    } else if ( bootloaderCounter >= 15000 ) {
+      usb_stop_sof_interrupts(NUM_INTERFACE);
+      asm("bkpt #251");
+    }
+#elif (defined(__MK20DX128__) || defined(__MK20DX256__) || defined(__MKL26Z64__) || defined(__MK64FX512__) || defined(__MK66FX1M0__))
+    __asm__ volatile("bkpt");
+#endif
+  }
 }
