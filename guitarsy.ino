@@ -1,6 +1,10 @@
 // #define USE_WIRE
 //#define DEBUG
 
+#if defined(USB_SERIAL_HID)
+#define DEBUG
+#endif
+
 #include "MPU9250_RegisterMap.h"
 
 
@@ -830,7 +834,10 @@ void setup() {
 
   analogReadRes(8);
   analogReadAveraging(1);
+
+#if defined(USB_HID) || defined(USB_SERIAL_HID)
   Joystick.useManualSend(true);
+#endif
 
   // MPU9250 setup
   //writeByte(mpu9250_addr, MPU9250_PWR_MGMT_1, MPU9250_BIT_RESET);
@@ -969,18 +976,6 @@ void loop() {
     dpadangle = 270;
   }
 
-  Joystick.hat( dpadangle );
-  Joystick.button( 1, green || slidergreen ? 1 : 0 );
-  Joystick.button( 2, red || sliderred ? 1 : 0 );
-  Joystick.button( 3, yellow || slideryellow ? 1 : 0 );
-  Joystick.button( 4, blue || sliderblue ? 1 : 0 );
-  Joystick.button( 5, orange || sliderorange ? 1 : 0 );
-  Joystick.button( 6, strumup ? 1 : 0 );
-  Joystick.button( 7, strumdown ? 1 : 0 );
-
-  Joystick.button( 9, start ? 1 : 0 );
-  Joystick.button( 10, pedal ? 1 : 0 );
-
   // gyro activate select as well
   select = select || gx >= 200 || gy >= 200 || gz >= 200 || gx <= -200 || gy <= -200 || gz <= -200;
 
@@ -1001,7 +996,18 @@ void loop() {
     pedalCyclesOn = -1;
   }
 
+#if defined(USB_HID) || defined(USB_SERIAL_HID)
+  Joystick.hat( dpadangle );
+  Joystick.button( 1, green || slidergreen ? 1 : 0 );
+  Joystick.button( 2, red || sliderred ? 1 : 0 );
+  Joystick.button( 3, yellow || slideryellow ? 1 : 0 );
+  Joystick.button( 4, blue || sliderblue ? 1 : 0 );
+  Joystick.button( 5, orange || sliderorange ? 1 : 0 );
+  Joystick.button( 6, strumup ? 1 : 0 );
+  Joystick.button( 7, strumdown ? 1 : 0 );
   Joystick.button( 8, select ? 1 : 0 );
+  Joystick.button( 9, start ? 1 : 0 );
+  Joystick.button( 10, pedal ? 1 : 0 );
   Joystick.X( current_whammy );
 
   int16_t acceleroToJY = 512;
@@ -1014,6 +1020,7 @@ void loop() {
   }
 
   Joystick.Y( acceleroToJY );
+#endif
 
   if ( bootloaderCounter > 10000 ) {
     bootloaderCounter++;
@@ -1030,7 +1037,9 @@ void loop() {
   while ( sinceSend <= 1000 ) {
     ;
   }
+#if defined(USB_HID) || defined(USB_SERIAL_HID)
   Joystick.send_now();
+#endif
   sinceSend -= 1000;
 
 #ifdef DEBUG
