@@ -1,0 +1,810 @@
+diff --git teensy4/usb.c teensy4/usb.c
+index e22343c..5c5e4de 100644
+--- teensy4/usb.c
++++ teensy4/usb.c
+@@ -16,6 +16,8 @@
+ #include <string.h>
+ #include "debug/printf.h"
+ 
++#include "usb_xinput_guitar.h"
++
+ //#define LOG_SIZE  20
+ //uint32_t transfer_log_head=0;
+ //uint32_t transfer_log_count=0;
+@@ -202,6 +204,10 @@ FLASHMEM void usb_init(void)
+ 	//transfer_log_head = 0;
+ 	//transfer_log_count = 0;
+ 	//USB1_PORTSC1 |= USB_PORTSC1_PFSC; // force 12 Mbit/sec
++#ifdef XINPUT_GUITAR_INTERFACE
++	// XInput TODO: 12Mb/s may be more reliable considering we're doing custom cabling etc...
++	//USB1_PORTSC1 |= USB_PORTSC1_PFSC;
++#endif
+ }
+ 
+ 
+@@ -402,6 +408,12 @@ static void endpoint0_setup(uint64_t setupdata)
+ 	  case 0x0900: // SET_CONFIGURATION
+ 		usb_configuration = setup.wValue;
+ 		// configure all other endpoints
++// XInput TODO: Why does Endpoint 1 not work???
++#if 0
++		#if defined(ENDPOINT1_CONFIG)
++		USB1_ENDPTCTRL1 = ENDPOINT1_CONFIG;
++		#endif
++#endif
+ 		#if defined(ENDPOINT2_CONFIG)
+ 		USB1_ENDPTCTRL2 = ENDPOINT2_CONFIG;
+ 		#endif
+@@ -455,6 +467,9 @@ static void endpoint0_setup(uint64_t setupdata)
+ 		#if defined(AUDIO_INTERFACE)
+ 		usb_audio_configure();
+ 		#endif
++		#if defined(XINPUT_GUITAR_INTERFACE)
++		usb_xinput_guitar_configure();
++		#endif
+ 		endpoint0_receive(NULL, 0, 0);
+ 		return;
+ 	  case 0x0880: // GET_CONFIGURATION
+diff --git teensy4/usb_desc.c teensy4/usb_desc.c
+index 603f906..9d7a4b0 100644
+--- teensy4/usb_desc.c
++++ teensy4/usb_desc.c
+@@ -493,6 +493,58 @@ static uint8_t flightsim_report_desc[] = {
+ };
+ #endif
+ 
++#if 0
++#ifdef XINPUT_GUITAR_INTERFACE
++// XInput NOTE: This is the HID report descriptor from Windows via XInput-->HID.
++static uint8_t xinput_guitar_report_desc[] = {
++        0x05, 0x01,         /*  Usage Page (Desktop),               */
++        0x09, 0x05,         /*  Usage (Gamepad),                    */
++        0xA1, 0x01,         /*  Collection (Application),           */
++        0x09, 0x00,         /*      Usage (00h),                    */
++        0xA1, 0x00,         /*      Collection (Physical),          */
++        0x09, 0x35,         /*          Usage (Rz),                 */
++        0x15, 0x00,         /*          Logical Minimum (0),        */
++        0x35, 0x00,         /*          Physical Minimum (0),       */
++        0x65, 0x00,         /*          Unit,                       */
++        0x55, 0x00,         /*          Unit Exponent (0),          */
++        0x75, 0x10,         /*          Report Size (16),           */
++        0x95, 0x01,         /*          Report Count (1),           */
++        0x81, 0x02,         /*          Input (Variable),           */
++        0xC1, 0x00,         /*      End Collection,                 */
++        0x09, 0x36,         /*      Usage (Slider),                 */
++        0x81, 0x02,         /*      Input (Variable),               */
++        0x25, 0x01,         /*      Logical Maximum (1),            */
++        0x45, 0x01,         /*      Physical Maximum (1),           */
++        0x75, 0x01,         /*      Report Size (1),                */
++        0x95, 0x10,         /*      Report Count (16),              */
++        0x81, 0x03,         /*      Input (Constant, Variable),     */
++        0x05, 0x09,         /*      Usage Page (Button),            */
++        0x19, 0x01,         /*      Usage Minimum (01h),            */
++        0x29, 0x0A,         /*      Usage Maximum (0Ah),            */
++        0x95, 0x0A,         /*      Report Count (10),              */
++        0x81, 0x02,         /*      Input (Variable),               */
++        0x95, 0x06,         /*      Report Count (6),               */
++        0x81, 0x03,         /*      Input (Constant, Variable),     */
++        0x05, 0x01,         /*      Usage Page (Desktop),           */
++        0x09, 0x39,         /*      Usage (Hat Switch),             */
++        0x15, 0x01,         /*      Logical Minimum (1),            */
++        0x25, 0x08,         /*      Logical Maximum (8),            */
++        0x46, 0x3B, 0x10,   /*      Physical Maximum (4155),        */
++        0x65, 0x0E,         /*      Unit (0Eh),                     */
++        0x75, 0x04,         /*      Report Size (4),                */
++        0x95, 0x01,         /*      Report Count (1),               */
++        0x81, 0x42,         /*      Input (Variable, Null State),   */
++        0x15, 0x00,         /*      Logical Minimum (0),            */
++        0x25, 0x01,         /*      Logical Maximum (1),            */
++        0x45, 0x01,         /*      Physical Maximum (1),           */
++        0x65, 0x00,         /*      Unit,                           */
++        0x75, 0x01,         /*      Report Size (1),                */
++        0x95, 0x0C,         /*      Report Count (12),              */
++        0x81, 0x03,         /*      Input (Constant, Variable),     */
++        0xC1, 0x00          /*  End Collection                      */
++};
++#endif
++#endif
+ 
+ // **************************************************************
+ //   USB Descriptor Sizes
+@@ -618,7 +670,9 @@ static uint8_t flightsim_report_desc[] = {
+ #define MULTITOUCH_INTERFACE_DESC_SIZE	0
+ #endif
+ 
++#ifndef CONFIG_DESC_SIZE
+ #define CONFIG_DESC_SIZE		MULTITOUCH_INTERFACE_DESC_POS+MULTITOUCH_INTERFACE_DESC_SIZE
++#endif
+ 
+ 
+ 
+@@ -638,8 +692,16 @@ PROGMEM const uint8_t usb_config_descriptor_480[CONFIG_DESC_SIZE] = {
+         NUM_INTERFACE,                          // bNumInterfaces
+         1,                                      // bConfigurationValue
+         0,                                      // iConfiguration
++#ifdef CONFIG_BMATTRIBUTES
++        CONFIG_BMATTRIBUTES,
++#else
+         0xC0,                                   // bmAttributes
++#endif
++#ifdef CONFIG_BMAXPOWER
++        CONFIG_BMAXPOWER,
++#else
+         50,                                     // bMaxPower
++#endif
+ 
+ #ifdef CDC_IAD_DESCRIPTOR
+         // interface association descriptor, USB ECN, Table 9-Z
+@@ -1612,6 +1674,122 @@ PROGMEM const uint8_t usb_config_descriptor_480[CONFIG_DESC_SIZE] = {
+         MULTITOUCH_SIZE, 0,                     // wMaxPacketSize
+         4,                                      // bInterval, 4 = 1ms
+ #endif // KEYMEDIA_INTERFACE
++
++#ifdef XINPUT_GUITAR_INTERFACE
++	// configuration for 480 Mbit/sec speed
++        // interface descriptor, USB spec 9.6.5, page 267-269, Table 9-12
++        9,                                      // bLength
++        4,                                      // bDescriptorType
++        XINPUT_GUITAR_INTERFACE,                // bInterfaceNumber
++        0,                                      // bAlternateSetting
++        2,                                      // bNumEndpoints
++        0xFF,                                   // bInterfaceClass (0x03 = HID)
++        0x5D,                                   // bInterfaceSubClass
++        0x01,                                   // bInterfaceProtocol
++        0,                                      // iInterface
++
++        // the following is probably Xbox-related
++        0x11, // bLength
++        0x21, // bDescriptorType
++        0x10,0x01,0x07,0x25,XINPUT_GUITAR_TX_ENDPOINT | 0x80,0x14,0x03,0x03,0x03,0x04,0x13,XINPUT_GUITAR_RX_ENDPOINT,0x08,0x03,0x03, // ???
++
++        0x07, // bLength
++        0x05, // bDescriptorType
++        XINPUT_GUITAR_TX_ENDPOINT | 0x80, // bEndpointAddress  (IN endpoint 1)
++        0x03, // bmAttributes      (Transfer: Interrupt / Synch: None / Usage: Data)
++        0x20, 0x00, // wMaxPacketSize (1 x 32 bytes)
++        0x03, // bInterval         (4 frames)
++
++        0x07, // bLength
++        0x05, // bDescriptorType
++        XINPUT_GUITAR_RX_ENDPOINT, // bEndpointAddress  (OUT endpoint 2)
++        0x03, // bmAttributes      (Transfer: Interrupt / Synch: None / Usage: Data)
++        0x20, 0x00, // wMaxPacketSize (1 x 32 bytes)
++        0x03, // bInterval         (8 frames)
++
++
++        0x09, // bLength
++        0x04, // bDescriptorType
++        0x01, // bInterfaceNumber
++        0x00, // bAlternateSetting
++        0x04, // bNumEndPoints
++        0xFF, // bInterfaceClass      (Vendor specific)
++        0x5D, // bInterfaceSubClass
++        0x03, // bInterfaceProtocol
++        0x00, // iInterface
++
++        // another Xbox-related thing I assume
++        0x1B, // bLength
++        0x21, // bDescriptorType
++        0x00,0x01,0x01,0x01,0x83,0x40,0x01,0x04,0x20,0x16,0x85,0x00,0x00,
++        0x00,0x00,0x00,0x00,0x16,0x05,0x00,0x00,0x00,0x00,0x00,0x00,
++
++        0x07, // bLength
++        0x05, // bDescriptorType
++        0x83, // bEndpointAddress  (IN endpoint 3)
++        0x03, // bmAttributes      (Transfer: Interrupt / Synch: None / Usage: Data)
++        0x20, 0x00, // wMaxPacketSize (1 x 32 bytes)
++        0x08, // bInterval         (2 frames)
++
++        0x07, // bLength
++        0x05, // bDescriptorType
++        0x04, // bEndpointAddress  (OUT endpoint 4)
++        0x03, // bmAttributes      (Transfer: Interrupt / Synch: None / Usage: Data)
++        0x20, 0x00, // wMaxPacketSize (1 x 32 bytes)
++        0x08, // bInterval         (4 frames)
++
++        0x07, // bLength
++        0x05, // bDescriptorType
++        0x85, // bEndpointAddress  (IN endpoint 5)
++        0x03, // bmAttributes      (Transfer: Interrupt / Synch: None / Usage: Data)
++        0x20, 0x00, // wMaxPacketSize (1 x 32 bytes)
++        0x10, // bInterval         (64 frames)
++
++        0x07, // bLength
++        0x05, // bDescriptorType
++        0x05, // bEndpointAddress  (OUT endpoint 5)
++        0x03, // bmAttributes      (Transfer: Interrupt / Synch: None / Usage: Data)
++        0x20, 0x00, // wMaxPacketSize (1 x 32 bytes)
++        0x10, // bInterval         (16 frames)
++
++
++        0x09, // bLength
++        0x04, // bDescriptorType
++        0x02, // bInterfaceNumber
++        0x00, // bAlternateSetting
++        0x01, // bNumEndPoints
++        0xFF, // bInterfaceClass      (Vendor specific)
++        0x5D, // bInterfaceSubClass
++        0x02, // bInterfaceProtocol
++        0x00, // iInterface
++
++        // again another Xbox-related thing I assume
++        0x09, // bLength
++        0x21, // bDescriptorType
++        0x00,0x01,0x01,0x22,0x86,0x07,0x00,
++
++        0x07, // bLength
++        0x05, // bDescriptorType
++        0x86, // bEndpointAddress  (IN endpoint 6)
++        0x03, // bmAttributes      (Transfer: Interrupt / Synch: None / Usage: Data)
++        0x20,0x00, // wMaxPacketSize (1 x 32 bytes)
++        0x10, // bInterval         (16 frames)
++
++        0x09, // bLength
++        0x04, // bDescriptorType
++        0x03, // bInterfaceNumber
++        0x00, // bAlternateSetting
++        0x00, // bNumEndPoints
++        0xFF, // bInterfaceClass      (Vendor specific)
++        0xFD, // bInterfaceSubClass
++        0x13, // bInterfaceProtocol
++        0x04, // iInterface
++
++        // and the last "Xbox thing"...
++        0x06, // bLength
++        0x41, // bDescriptorType
++        0x00,0x01,0x01,0x03,
++#endif // XINPUT_GUITAR_INTERFACE
+ };
+ 
+ 
+@@ -1624,8 +1802,16 @@ PROGMEM const uint8_t usb_config_descriptor_12[CONFIG_DESC_SIZE] = {
+         NUM_INTERFACE,                          // bNumInterfaces
+         1,                                      // bConfigurationValue
+         0,                                      // iConfiguration
++#ifdef CONFIG_BMATTRIBUTES
++        CONFIG_BMATTRIBUTES,
++#else
+         0xC0,                                   // bmAttributes
++#endif
++#ifdef CONFIG_BMAXPOWER
++        CONFIG_BMAXPOWER,
++#else
+         50,                                     // bMaxPower
++#endif
+ 
+ #ifdef CDC_IAD_DESCRIPTOR
+         // interface association descriptor, USB ECN, Table 9-Z
+@@ -2598,6 +2784,123 @@ PROGMEM const uint8_t usb_config_descriptor_12[CONFIG_DESC_SIZE] = {
+         MULTITOUCH_SIZE, 0,                     // wMaxPacketSize
+         1,                                      // bInterval
+ #endif // KEYMEDIA_INTERFACE
++
++
++#ifdef XINPUT_GUITAR_INTERFACE
++	// configuration for 12 Mbit/sec speed
++        // interface descriptor, USB spec 9.6.5, page 267-269, Table 9-12
++        9,                                      // bLength
++        4,                                      // bDescriptorType
++        XINPUT_GUITAR_INTERFACE,                // bInterfaceNumber
++        0,                                      // bAlternateSetting
++        2,                                      // bNumEndpoints
++        0xFF,                                   // bInterfaceClass (0x03 = HID)
++        0x5D,                                   // bInterfaceSubClass
++        0x01,                                   // bInterfaceProtocol
++        0,                                      // iInterface
++
++        // the following is probably Xbox-related
++        0x11, // bLength
++        0x21, // bDescriptorType
++        0x10,0x01,0x07,0x25,XINPUT_GUITAR_TX_ENDPOINT | 0x80,0x14,0x03,0x03,0x03,0x04,0x13,XINPUT_GUITAR_RX_ENDPOINT,0x08,0x03,0x03, // ???
++
++        0x07, // bLength
++        0x05, // bDescriptorType
++        XINPUT_GUITAR_TX_ENDPOINT | 0x80, // bEndpointAddress  (IN endpoint 1)
++        0x03, // bmAttributes      (Transfer: Interrupt / Synch: None / Usage: Data)
++        0x20, 0x00, // wMaxPacketSize (1 x 32 bytes)
++        0x01, // bInterval         (4 frames)
++
++        0x07, // bLength
++        0x05, // bDescriptorType
++        XINPUT_GUITAR_RX_ENDPOINT, // bEndpointAddress  (OUT endpoint 2)
++        0x03, // bmAttributes      (Transfer: Interrupt / Synch: None / Usage: Data)
++        0x20, 0x00, // wMaxPacketSize (1 x 32 bytes)
++        0x01, // bInterval         (8 frames)
++
++
++        0x09, // bLength
++        0x04, // bDescriptorType
++        0x01, // bInterfaceNumber
++        0x00, // bAlternateSetting
++        0x04, // bNumEndPoints
++        0xFF, // bInterfaceClass      (Vendor specific)
++        0x5D, // bInterfaceSubClass
++        0x03, // bInterfaceProtocol
++        0x00, // iInterface
++
++        // another Xbox-related thing I assume
++        0x1B, // bLength
++        0x21, // bDescriptorType
++        0x00,0x01,0x01,0x01,0x83,0x40,0x01,0x04,0x20,0x16,0x85,0x00,0x00,
++        0x00,0x00,0x00,0x00,0x16,0x05,0x00,0x00,0x00,0x00,0x00,0x00,
++
++        0x07, // bLength
++        0x05, // bDescriptorType
++        0x83, // bEndpointAddress  (IN endpoint 3)
++        0x03, // bmAttributes      (Transfer: Interrupt / Synch: None / Usage: Data)
++        0x20, 0x00, // wMaxPacketSize (1 x 32 bytes)
++        0x02, // bInterval         (2 frames)
++
++        0x07, // bLength
++        0x05, // bDescriptorType
++        0x04, // bEndpointAddress  (OUT endpoint 4)
++        0x03, // bmAttributes      (Transfer: Interrupt / Synch: None / Usage: Data)
++        0x20, 0x00, // wMaxPacketSize (1 x 32 bytes)
++        0x04, // bInterval         (4 frames)
++
++        0x07, // bLength
++        0x05, // bDescriptorType
++        0x85, // bEndpointAddress  (IN endpoint 5)
++        0x03, // bmAttributes      (Transfer: Interrupt / Synch: None / Usage: Data)
++        0x20, 0x00, // wMaxPacketSize (1 x 32 bytes)
++        0x40, // bInterval         (64 frames)
++
++        0x07, // bLength
++        0x05, // bDescriptorType
++        0x05, // bEndpointAddress  (OUT endpoint 5)
++        0x03, // bmAttributes      (Transfer: Interrupt / Synch: None / Usage: Data)
++        0x20, 0x00, // wMaxPacketSize (1 x 32 bytes)
++        0x10, // bInterval         (16 frames)
++
++
++        0x09, // bLength
++        0x04, // bDescriptorType
++        0x02, // bInterfaceNumber
++        0x00, // bAlternateSetting
++        0x01, // bNumEndPoints
++        0xFF, // bInterfaceClass      (Vendor specific)
++        0x5D, // bInterfaceSubClass
++        0x02, // bInterfaceProtocol
++        0x00, // iInterface
++
++        // again another Xbox-related thing I assume
++        0x09, // bLength
++        0x21, // bDescriptorType
++        0x00,0x01,0x01,0x22,0x86,0x07,0x00,
++
++        0x07, // bLength
++        0x05, // bDescriptorType
++        0x86, // bEndpointAddress  (IN endpoint 6)
++        0x03, // bmAttributes      (Transfer: Interrupt / Synch: None / Usage: Data)
++        0x20,0x00, // wMaxPacketSize (1 x 32 bytes)
++        0x10, // bInterval         (16 frames)
++
++        0x09, // bLength
++        0x04, // bDescriptorType
++        0x03, // bInterfaceNumber
++        0x00, // bAlternateSetting
++        0x00, // bNumEndPoints
++        0xFF, // bInterfaceClass      (Vendor specific)
++        0xFD, // bInterfaceSubClass
++        0x13, // bInterfaceProtocol
++        0x04, // iInterface
++
++        // and the last "Xbox thing"...
++        0x06, // bLength
++        0x41, // bDescriptorType
++        0x00,0x01,0x01,0x03,
++#endif // XINPUT_GUITAR_INTERFACE
+ };
+ 
+ 
+@@ -2630,6 +2933,10 @@ extern struct usb_string_descriptor_struct usb_string_product_name
+         __attribute__ ((weak, alias("usb_string_product_name_default")));
+ extern struct usb_string_descriptor_struct usb_string_serial_number
+         __attribute__ ((weak, alias("usb_string_serial_number_default")));
++#ifdef XINPUT_GUITAR_INTERFACE
++extern struct usb_string_descriptor_struct usb_string_xinput_security_descriptor
++        __attribute__ ((weak, alias("usb_string_xinput_security_descriptor_default")));
++#endif
+ 
+ PROGMEM const struct usb_string_descriptor_struct string0 = {
+         4,
+@@ -2652,6 +2959,20 @@ struct usb_string_descriptor_struct usb_string_serial_number_default = {
+         3,
+         {0,0,0,0,0,0,0,0,0,0}
+ };
++#ifdef XINPUT_GUITAR_INTERFACE
++PROGMEM const struct usb_string_descriptor_struct usb_string_xinput_security_descriptor_default = {
++        2 + 88 * 2,
++        3,
++        {
++            'X', 'b', 'o', 'x', ' ', 'S', 'e', 'c', 'u', 'r', 'i', 't', 'y', ' ', 'M', 'e',
++            't', 'h', 'o', 'd', ' ', '3', ',', ' ', 'V', 'e', 'r', 's', 'i', 'o', 'n', ' ',
++            '1', '.', '0', '0', ',', ' ', 0xA9, ' ', '2', '0', '0', '5', ' ', 'M', 'i', 'c',
++            'r', 'o', 's', 'o', 'f', 't', ' ', 'C', 'o', 'r', 'p', 'o', 'r', 'a', 't', 'i', 
++            'o', 'n', '.', ' ', 'A', 'l', 'l', ' ', 'r', 'i', 'g', 'h', 't', 's', ' ', 'r',
++            'e', 's', 'e', 'r', 'v', 'e', 'd', '.'
++        }
++};
++#endif
+ #ifdef MTP_INTERFACE
+ PROGMEM const struct usb_string_descriptor_struct usb_string_mtp = {
+ 	2 + 3 * 2,
+@@ -2687,7 +3008,9 @@ void usb_init_serialnumber(void)
+ const usb_descriptor_list_t usb_descriptor_list[] = {
+ 	//wValue, wIndex, address,          length
+ 	{0x0100, 0x0000, device_descriptor, sizeof(device_descriptor)},
++#ifndef XINPUT_GUITAR_INTERFACE
+ 	{0x0600, 0x0000, qualifier_descriptor, sizeof(qualifier_descriptor)},
++#endif
+ 	{0x0200, 0x0000, usb_config_descriptor_480, CONFIG_DESC_SIZE},
+ 	{0x0700, 0x0000, usb_config_descriptor_12, CONFIG_DESC_SIZE},
+ #ifdef SEREMU_INTERFACE
+@@ -2729,6 +3052,9 @@ const usb_descriptor_list_t usb_descriptor_list[] = {
+         {0x0301, 0x0409, (const uint8_t *)&usb_string_manufacturer_name, 0},
+         {0x0302, 0x0409, (const uint8_t *)&usb_string_product_name, 0},
+         {0x0303, 0x0409, (const uint8_t *)&usb_string_serial_number, 0},
++#ifdef XINPUT_GUITAR_INTERFACE
++        {0x0304, 0x0409, (const uint8_t *)&usb_string_xinput_security_descriptor, 0},
++#endif
+ 	{0, 0, NULL, 0}
+ };
+ 
+diff --git teensy4/usb_desc.h teensy4/usb_desc.h
+index 160752d..af7fead 100644
+--- teensy4/usb_desc.h
++++ teensy4/usb_desc.h
+@@ -912,6 +912,48 @@ let me know?  http://forum.pjrc.com/forums/4-Suggestions-amp-Bug-Reports
+   #define ENDPOINT14_CONFIG	ENDPOINT_TRANSMIT_ISOCHRONOUS
+   #define ENDPOINT15_CONFIG	ENDPOINT_TRANSMIT_ONLY
+ 
++#elif defined(USB_XINPUT_GUITAR)
++
++// XInput TODO: Why does using Xplorer Vendor IDs not work on Windows?
++// The issue is we don't get assigned compatible ID "USB\MS_COMP_XUSB10",
++// So the Xbox drivers don't pick us up. However, it will match the following
++// VID/PID pair without that compatible ID assignment. With using the Xplorer
++// configuration descriptors XInput drivers pick us up as a guitar still,
++// so mission accomplished, but it seems odd.
++//  #define VENDOR_ID 0x1430
++//  #define PRODUCT_ID 0x4748
++//  #define BCD_DEVICE 0x3122
++  #define VENDOR_ID 0x045e
++  #define PRODUCT_ID 0x028e
++  #define BCD_DEVICE 0x0114
++  #define CONFIG_DESC_SIZE 153
++  #define CONFIG_BMATTRIBUTES 0xA0
++  #define CONFIG_BMAXPOWER 0xFA
++  #define DEVICE_CLASS 0xFF
++  #define DEVICE_SUBCLASS 0xFF
++  #define DEVICE_PROTOCOL 0xFF
++  #define MANUFACTURER_NAME {'R','e','d','O','c','t','a','n','e',' ','I','n','c','(','c',')','2','0','0','6',' '}
++  #define MANUFACTURER_NAME_LEN 21
++  #define PRODUCT_NAME {'G','u','i','t','a','r',' ','H','e','r','o',' ','X','-','p','l','o','r','e','r',' ',' '}
++  #define PRODUCT_NAME_LEN 22
++  #define EP0_SIZE 64
++  #define NUM_ENDPOINTS 6
++  #define NUM_USB_BUFFERS 24
++  #define NUM_INTERFACE 4
++  #define XINPUT_GUITAR_INTERFACE 0
++// XInput TODO: Why doesn't endpoint 1 work? TX was 1, changed to 2 and it still works...
++  #define XINPUT_GUITAR_TX_ENDPOINT 2
++  #define XINPUT_GUITAR_TX_SIZE 20
++  #define XINPUT_GUITAR_RX_ENDPOINT 2
++  #define XINPUT_GUITAR_RX_SIZE 8
++  #define XINPUT_GUITAR_INTERVAL 1
++  //#define ENDPOINT1_CONFIG ENDPOINT_TRANSMIT_INTERRUPT
++  #define ENDPOINT2_CONFIG ENDPOINT_RECEIVE_INTERRUPT + ENDPOINT_TRANSMIT_INTERRUPT
++  #define ENDPOINT3_CONFIG ENDPOINT_TRANSMIT_INTERRUPT
++  #define ENDPOINT4_CONFIG ENDPOINT_RECEIVE_INTERRUPT
++  #define ENDPOINT5_CONFIG ENDPOINT_RECEIVE_INTERRUPT + ENDPOINT_TRANSMIT_INTERRUPT
++  #define ENDPOINT6_CONFIG ENDPOINT_TRANSMIT_INTERRUPT
++
+ #endif
+ 
+ #ifdef USB_DESC_LIST_DEFINE
+diff --git teensy4/usb_inst.cpp teensy4/usb_inst.cpp
+index ca623a1..f1c8efc 100644
+--- teensy4/usb_inst.cpp
++++ teensy4/usb_inst.cpp
+@@ -80,7 +80,7 @@ usb_joystick_class Joystick;
+ uint8_t usb_joystick_class::manual_mode = 0;
+ #endif
+ 
+-#ifdef USB_DISABLED
++#if defined(USB_DISABLED) || defined(USB_XINPUT_GUITAR)
+ usb_serial_class Serial;
+ #endif
+ 
+diff --git teensy4/usb_serial.h teensy4/usb_serial.h
+index cb5de1a..d1ab315 100644
+--- teensy4/usb_serial.h
++++ teensy4/usb_serial.h
+@@ -33,6 +33,46 @@
+ #include "usb_desc.h"
+ #include <stdint.h>
+ 
++#if defined(USB_XINPUT_GUITAR)
++
++// Allow Arduino programs using Serial to compile, but Serial will do nothing.
++#ifdef __cplusplus
++#include "Stream.h"
++class usb_serial_class : public Stream
++{
++public:
++	constexpr usb_serial_class() {}
++        void begin(long) { };
++        void end() { };
++        virtual int available() { return 0; }
++        virtual int read() { return -1; }
++        virtual int peek() { return -1; }
++        virtual void flush() { }
++        virtual void clear() { }
++        virtual size_t write(uint8_t c) { return 1; }
++        virtual size_t write(const uint8_t *buffer, size_t size) { return size; }
++	size_t write(unsigned long n) { return 1; }
++	size_t write(long n) { return 1; }
++	size_t write(unsigned int n) { return 1; }
++	size_t write(int n) { return 1; }
++	int availableForWrite() { return 0; }
++	using Print::write;
++        void send_now(void) { }
++        uint32_t baud(void) { return 0; }
++        uint8_t stopbits(void) { return 1; }
++        uint8_t paritytype(void) { return 0; }
++        uint8_t numbits(void) { return 8; }
++        uint8_t dtr(void) { return 1; }
++        uint8_t rts(void) { return 1; }
++        operator bool() { return true; }
++};
++
++extern usb_serial_class Serial;
++extern void serialEvent(void);
++#endif // __cplusplus
++
++#endif
++
+ #if (defined(CDC_STATUS_INTERFACE) && defined(CDC_DATA_INTERFACE)) || defined(USB_DISABLED)
+ 
+ // C language implementation
+diff --git teensy4/usb_xinput_guitar.c teensy4/usb_xinput_guitar.c
+new file mode 100644
+index 0000000..6000d13
+--- /dev/null
++++ teensy4/usb_xinput_guitar.c
+@@ -0,0 +1,160 @@
++/* Teensyduino Core Library
++ * http://www.pjrc.com/teensy/
++ * Copyright (c) 2017 PJRC.COM, LLC.
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining
++ * a copy of this software and associated documentation files (the
++ * "Software"), to deal in the Software without restriction, including
++ * without limitation the rights to use, copy, modify, merge, publish,
++ * distribute, sublicense, and/or sell copies of the Software, and to
++ * permit persons to whom the Software is furnished to do so, subject to
++ * the following conditions:
++ *
++ * 1. The above copyright notice and this permission notice shall be
++ * included in all copies or substantial portions of the Software.
++ *
++ * 2. If the Software is incorporated into a build system that allows
++ * selection among a list of target devices, then similar target
++ * devices manufactured by PJRC.COM must be included in the list of
++ * target devices and selectable in the same manner.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
++ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
++ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
++ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
++ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
++ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++ * SOFTWARE.
++ */
++
++#include "usb_dev.h"
++#include "usb_rawhid.h"
++#include "avr/pgmspace.h" // for PROGMEM, DMAMEM, FASTRUN
++#include "core_pins.h" // for yield(), millis()
++#include <string.h>    // for memcpy()
++//#include "HardwareSerial.h"
++
++#include "debug/printf.h"
++
++#ifdef XINPUT_GUITAR_INTERFACE // defined by usb_dev.h -> usb_desc.h
++
++#define TX_NUM   4
++static transfer_t tx_transfer[TX_NUM] __attribute__ ((used, aligned(32)));
++DMAMEM static uint8_t txbuffer[XINPUT_GUITAR_TX_SIZE * TX_NUM];
++static uint8_t tx_head=0;
++
++#define RX_NUM  4
++static transfer_t rx_transfer[RX_NUM] __attribute__ ((used, aligned(32)));
++DMAMEM static uint8_t rx_buffer[XINPUT_GUITAR_RX_SIZE * RX_NUM] __attribute__ ((aligned(32)));
++static volatile uint8_t rx_head;
++static volatile uint8_t rx_tail;
++static uint8_t rx_list[RX_NUM + 1];
++static volatile uint32_t rx_available;
++static void rx_queue_transfer(int i);
++static void rx_event(transfer_t *t);
++extern volatile uint8_t usb_configuration;
++
++
++void usb_xinput_guitar_configure(void)
++{
++	printf("usb_xinput_guitar_configure\n");
++	memset(tx_transfer, 0, sizeof(tx_transfer));
++	memset(rx_transfer, 0, sizeof(rx_transfer));
++	tx_head = 0;
++	rx_head = 0;
++	rx_tail = 0;
++	usb_config_tx(XINPUT_GUITAR_TX_ENDPOINT, XINPUT_GUITAR_TX_SIZE, 0, NULL);
++	usb_config_rx(XINPUT_GUITAR_RX_ENDPOINT, XINPUT_GUITAR_RX_SIZE, 0, rx_event);
++	int i;
++	for (i=0; i < RX_NUM; i++) rx_queue_transfer(i);
++}
++
++/*************************************************************************/
++/**                               Receive                               **/
++/*************************************************************************/
++
++static void rx_queue_transfer(int i)
++{
++	void *buffer = rx_buffer + i * XINPUT_GUITAR_RX_SIZE;
++	arm_dcache_delete(buffer, XINPUT_GUITAR_RX_SIZE);
++	//memset(buffer, )
++	NVIC_DISABLE_IRQ(IRQ_USB1);
++	usb_prepare_transfer(rx_transfer + i, buffer, XINPUT_GUITAR_RX_SIZE, i);
++	usb_receive(XINPUT_GUITAR_RX_ENDPOINT, rx_transfer + i);
++	NVIC_ENABLE_IRQ(IRQ_USB1);
++}
++
++static void rx_event(transfer_t *t)
++{
++	int i = t->callback_param;
++	//printf("rx event i=%d\n", i);
++	// received a packet with data
++	uint32_t head = rx_head;
++	if (++head > RX_NUM) head = 0;
++	rx_list[head] = i;
++	rx_head = head;
++}
++
++
++int usb_xinput_guitar_recv(void *buffer, uint32_t timeout)
++{
++	uint32_t wait_begin_at = systick_millis_count;
++	uint32_t tail = rx_tail;
++	while (1) {
++		if (!usb_configuration) return -1; // usb not enumerated by host
++		if (tail != rx_head) break;
++		if (systick_millis_count - wait_begin_at > timeout)  {
++			return 0;
++		}
++		yield();
++	}
++//	digitalWriteFast(0, LOW);
++	if (++tail > RX_NUM) tail = 0;
++	uint32_t i = rx_list[tail];
++	rx_tail = tail;
++
++	memcpy(buffer,  rx_buffer + i * XINPUT_GUITAR_RX_SIZE, XINPUT_GUITAR_RX_SIZE);
++	rx_queue_transfer(i);
++	//memset(rx_transfer, 0, sizeof(rx_transfer));
++	//usb_prepare_transfer(rx_transfer + 0, rx_buffer, XINPUT_GUITAR_RX_SIZE, 0);
++	//usb_receive(XINPUT_GUITAR_RX_ENDPOINT, rx_transfer + 0);
++	return XINPUT_GUITAR_RX_SIZE;
++}
++
++int usb_xinput_guitar_send(const void *buffer, uint32_t timeout)
++{
++	transfer_t *xfer = tx_transfer + tx_head;
++	uint32_t wait_begin_at = systick_millis_count;
++
++	while (1) {
++		if (!usb_configuration) return -1; // usb not enumerated by host
++		uint32_t status = usb_transfer_status(xfer);
++		if (!(status & 0x80)) break; // transfer descriptor ready
++		if (systick_millis_count - wait_begin_at > timeout) return 0;
++		yield();
++	}
++	uint8_t *txdata = txbuffer + (tx_head * XINPUT_GUITAR_TX_SIZE);
++	memcpy(txdata, buffer, XINPUT_GUITAR_TX_SIZE);
++	arm_dcache_flush_delete(txdata, XINPUT_GUITAR_TX_SIZE);
++	usb_prepare_transfer(xfer, txdata, XINPUT_GUITAR_TX_SIZE, 0);
++	usb_transmit(XINPUT_GUITAR_TX_ENDPOINT, xfer);
++	if (++tx_head >= TX_NUM) tx_head = 0;
++	return XINPUT_GUITAR_TX_SIZE;
++}
++
++int usb_xinput_guitar_available(void)
++{
++	if (!usb_configuration) return 0;
++	if (rx_head != rx_tail) return XINPUT_GUITAR_RX_SIZE;
++	//if (!(usb_transfer_status(rx_transfer) & 0x80)) return XINPUT_GUITAR_RX_SIZE;
++	return 0;
++}
++
++int usb_xinput_guitar_connected(void)
++{
++	if (usb_configuration) return 1;
++	return 0;
++}
++
++#endif // XINPUT_GUITAR_INTERFACE
+diff --git teensy4/usb_xinput_guitar.h teensy4/usb_xinput_guitar.h
+new file mode 100644
+index 0000000..953357d
+--- /dev/null
++++ teensy4/usb_xinput_guitar.h
+@@ -0,0 +1,68 @@
++/* Teensyduino Core Library
++ * http://www.pjrc.com/teensy/
++ * Copyright (c) 2017 PJRC.COM, LLC.
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining
++ * a copy of this software and associated documentation files (the
++ * "Software"), to deal in the Software without restriction, including
++ * without limitation the rights to use, copy, modify, merge, publish,
++ * distribute, sublicense, and/or sell copies of the Software, and to
++ * permit persons to whom the Software is furnished to do so, subject to
++ * the following conditions:
++ *
++ * 1. The above copyright notice and this permission notice shall be
++ * included in all copies or substantial portions of the Software.
++ *
++ * 2. If the Software is incorporated into a build system that allows
++ * selection among a list of target devices, then similar target
++ * devices manufactured by PJRC.COM must be included in the list of
++ * target devices and selectable in the same manner.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
++ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
++ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
++ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
++ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
++ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++ * SOFTWARE.
++ */
++
++#pragma once
++
++#include "usb_desc.h"
++
++#ifdef XINPUT_GUITAR_INTERFACE
++
++#include <inttypes.h>
++
++// C language implementation
++#ifdef __cplusplus
++extern "C" {
++#endif
++int usb_xinput_guitar_connected(void);
++void usb_xinput_guitar_configure(void);
++int usb_xinput_guitar_recv(void *buffer, uint32_t timeout);
++int usb_xinput_guitar_available(void);
++int usb_xinput_guitar_send(const void *buffer, uint32_t timeout);
++#ifdef __cplusplus
++}
++#endif
++
++
++// C++ interface
++#ifdef __cplusplus
++class usb_xinput_guitar_class
++{
++public:
++	int connected(void) { return usb_xinput_guitar_connected(); }
++	int available(void) { return usb_xinput_guitar_available(); }
++	int recv(void *buffer, uint16_t timeout) { return usb_xinput_guitar_recv(buffer, timeout); }
++	int send(const void *buffer, uint16_t timeout) { return usb_xinput_guitar_send(buffer, timeout); }
++};
++
++extern usb_xinput_guitar_class XInputGuitar;
++
++#endif // __cplusplus
++
++#endif // XINPUT_GUITAR_INTERFACE
