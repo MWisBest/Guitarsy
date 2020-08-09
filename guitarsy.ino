@@ -1006,6 +1006,10 @@ void loop() {
   xinput_tx[10] = (uint8_t)((out_whammy) & 0xFF);
   xinput_tx[11] = (uint8_t)((out_whammy >> 8) & 0xFF);
 
+  int16_t out_accelero = ax * 32767; // TODO: This can wrap around on us. Not so sure it's a bad thing.
+  xinput_tx[12] = (uint8_t)((out_accelero) & 0xFF);
+  xinput_tx[13] = (uint8_t)((out_accelero >> 8) & 0xFF);
+
   if( !memcmp( xinput_tx, xinput_tx_prev, sizeof(xinput_tx) ) )
     newXinputData = false;
   else
