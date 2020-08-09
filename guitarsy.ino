@@ -1,7 +1,7 @@
 // #define USE_WIRE
 //#define DEBUG
 
-#if defined(USB_SERIAL_HID)
+#ifdef USB_SERIAL_HID
 #define DEBUG
 #endif
 
@@ -64,10 +64,23 @@ uint8_t gh5neck_curslider = 0;
 #endif
 
 volatile uint16_t current_buttons = 0x3FFF;
-volatile uint16_t current_whammy = 512;
+volatile uint8_t current_whammy = 0x00;
 elapsedMicros sinceSend = 0;
-int32_t pedalCyclesOn = -1;
+int32_t pedalCyclesOn = 0;
 int32_t bootloaderCounter = -1;
+
+
+
+
+#ifdef USB_XINPUT_GUITAR
+#include "usb_xinput_guitar.h"
+
+uint8_t xinput_tx[20];
+uint8_t xinput_tx_prev[20];
+uint8_t xinput_rx[8];
+uint8_t xinput_rx_prev[8];
+#endif
+
 
 #ifdef USE_WIRE
 uint8_t GH5Neck_I2C_OK() {
@@ -173,14 +186,13 @@ void UpdateButtons() {
 }
 
 void UpdateWhammy() {
-  uint16_t ret = 0;
+  uint8_t ret = 0;
   ret = analogRead(PIN_WHAMMY);
   if ( ret <= WHAMMY_DEADZONE )
     ret = 0;
   else if ( ret >= WHAMMY_MAX )
-    ret = 256;
-  ret *= 2;
-  ret += 512;
+    ret = 255;
+
   current_whammy = ret;
 }
 
@@ -903,10 +915,19 @@ void setup() {
   Serial.print("Z-Axis sensitivity adjustment value "); Serial.println(magCalibration[2], 2);
 #endif
 
-  pedalCyclesOn = -1;
+  pedalCyclesOn = 0;
   bootloaderCounter = -1;
   // zero out sinceSend due to lengthy startup now
   sinceSend = 0;
+
+  // don't check useless crap in yield
+  yield_active_check_flags = 0;
+
+#ifdef USB_XINPUT_GUITAR
+  // preset constants in tx
+  xinput_tx[0] = 0x00;
+  xinput_tx[1] = 0x14;
+#endif
 }
 
 
@@ -928,14 +949,13 @@ void loop() {
     UpdateButtons();
   }
 
-  int16_t dpadangle = -1;
   // our dpad will actually allow all buttons to be pressed.
   // we can use that for programming purposes, but for now,
   // lets just prioritize up and right.
   bool up = !(current_buttons & 0b1000000000000);
   bool down = !(current_buttons & 0b10000000000000);
-  bool right = !(current_buttons & 0b100000000000);
   bool left = !(current_buttons & 0b10000000000);
+  bool right = !(current_buttons & 0b100000000000);
 
   bool green = !(current_buttons & 0b1);
   bool red = !(current_buttons & 0b10);
@@ -954,6 +974,54 @@ void loop() {
   bool select = !(current_buttons & 0b10000000);
   bool pedal = !(current_buttons & 0b1000000000);
 
+  // gyro activate select as well
+  select = select || gx >= 200 || gy >= 200 || gz >= 200 || gx <= -200 || gy <= -200 || gz <= -200;
+
+  // pedal activate select as well but do not hold
+
+  if ( pedalCyclesOn < 0 ) {
+    pedal = true;
+    select = true;
+    pedalCyclesOn++;
+  } else if ( pedal ) {
+    if ( pedalCyclesOn < 1000 ) {
+      pedalCyclesOn++;
+      select = true;
+    }
+  } else {
+    // activate on long release as well
+    if ( pedalCyclesOn == 1000 ) {
+      select = true;
+      // Hold pedal/select for 20ms. Discovered during testing on GH3 instead of CH
+      pedalCyclesOn = -20;
+    }
+  }
+
+#if defined(USB_XINPUT_GUITAR)
+  bool newXinputData = true;
+  uint8_t button1 = (up || strumup) | ((down || strumdown) << 1) |
+                    (left << 2) | (right << 3) |
+                    (start << 4) | (select << 5);
+  uint8_t button2 = (orange || sliderorange) |
+                    (pedal << 1) |
+                    ((green || slidergreen) << 4) |
+                    ((red || sliderred) << 5) |
+                    ((blue || sliderblue) << 6) |
+                    ((yellow || slideryellow) << 7);
+
+  xinput_tx[2] = button1;
+  xinput_tx[3] = button2;
+
+  int16_t out_whammy = map(current_whammy, 0, 255, -32768, 32767);
+  xinput_tx[10] = (uint8_t)((out_whammy) & 0xFF);
+  xinput_tx[11] = (uint8_t)((out_whammy >> 8) & 0xFF);
+
+  if( !memcmp( xinput_tx, xinput_tx_prev, sizeof(xinput_tx) ) )
+    newXinputData = false;
+  else
+    memcpy( xinput_tx_prev, xinput_tx, sizeof(xinput_tx) );
+#elif defined(USB_HID) || defined(USB_SERIAL_HID)
+  int16_t dpadangle = -1;
   if ( up ) {
     if ( right ) {
       dpadangle = 45;
@@ -975,28 +1043,6 @@ void loop() {
   } else if ( left ) {
     dpadangle = 270;
   }
-
-  // gyro activate select as well
-  select = select || gx >= 200 || gy >= 200 || gz >= 200 || gx <= -200 || gy <= -200 || gz <= -200;
-
-  // pedal activate select as well but do not hold
-  if ( pedal ) {
-    if ( pedalCyclesOn == -1 ) {
-      pedalCyclesOn = 1;
-      select = true;
-    } else if ( pedalCyclesOn < 1000 ) {
-      pedalCyclesOn++;
-      select = true;
-    }
-  } else {
-    // activate on long release as well
-    if ( pedalCyclesOn == 1000 ) {
-      select = true;
-    }
-    pedalCyclesOn = -1;
-  }
-
-#if defined(USB_HID) || defined(USB_SERIAL_HID)
   Joystick.hat( dpadangle );
   Joystick.button( 1, green || slidergreen ? 1 : 0 );
   Joystick.button( 2, red || sliderred ? 1 : 0 );
@@ -1008,7 +1054,13 @@ void loop() {
   Joystick.button( 8, select ? 1 : 0 );
   Joystick.button( 9, start ? 1 : 0 );
   Joystick.button( 10, pedal ? 1 : 0 );
-  Joystick.X( current_whammy );
+
+  int16_t whammyToJX = 512;
+  whammyToJX += (current_whammy * 2);
+  if( whammyToJX == 1022 ) // 512 + 255 * 2
+    whammyToJX = 1023;
+
+  Joystick.X( whammyToJX );
 
   int16_t acceleroToJY = 512;
   acceleroToJY += (ax * 512);
@@ -1022,7 +1074,7 @@ void loop() {
   Joystick.Y( acceleroToJY );
 #endif
 
-  if ( bootloaderCounter > 10000 ) {
+  if ( bootloaderCounter > 5000 ) {
     bootloaderCounter++;
     goto skipSend;
   }
@@ -1037,7 +1089,12 @@ void loop() {
   while ( sinceSend <= 1000 ) {
     ;
   }
-#if defined(USB_HID) || defined(USB_SERIAL_HID)
+#if defined(USB_XINPUT_GUITAR)
+  if( newXinputData ) {
+    XInputGuitar.send( xinput_tx, 10 );
+  }
+  XInputGuitar.recv( xinput_rx, 0 );
+#elif defined(USB_HID) || defined(USB_SERIAL_HID)
   Joystick.send_now();
 #endif
   sinceSend -= 1000;
@@ -1057,22 +1114,22 @@ void loop() {
 
 skipSend:
   sinceSend = 0;
-  if ( bootloaderCounter >= 10000 ) {
-    if ( bootloaderCounter >= 14000 ) {
+  if ( bootloaderCounter >= 5000 ) {
+    if ( bootloaderCounter >= 9000 ) {
       digitalWrite(PIN_DPADLED, LOW);
-    } else if ( bootloaderCounter >= 13000 ) {
+    } else if ( bootloaderCounter >= 8000 ) {
       digitalWrite(PIN_DPADLED, HIGH);
-    } else if ( bootloaderCounter >= 12000 ) {
+    } else if ( bootloaderCounter >= 7000 ) {
       digitalWrite(PIN_DPADLED, LOW);
-    } else if ( bootloaderCounter >= 11000 ) {
+    } else if ( bootloaderCounter >= 6000 ) {
       digitalWrite(PIN_DPADLED, HIGH);
     } else {
       digitalWrite(PIN_DPADLED, LOW);
     }
 #ifdef __IMXRT1062__
-    if ( bootloaderCounter == 10000 ) {
+    if ( bootloaderCounter == 5000 ) {
       usb_start_sof_interrupts(NUM_INTERFACE);
-    } else if ( bootloaderCounter >= 15000 ) {
+    } else if ( bootloaderCounter >= 10000 ) {
       usb_stop_sof_interrupts(NUM_INTERFACE);
       asm("bkpt #251");
     }
