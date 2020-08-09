@@ -157,13 +157,9 @@ uint8_t MPU9250_WhoAmI() {
 
 #else
 
-
+// TODO: Move hardware I2C stuff into here, actually make both methods work...
 
 #endif
-
-
-
-
 
 
 void UpdateButtons() {
@@ -225,6 +221,7 @@ void UpdateSlider() {
     GH5Neck.write_async(gh5neck_addr, (uint8_t*)&gh5neck_reg_slidernew, sizeof(gh5neck_reg_slidernew), false);
     gh5neck_i2c_finish();
     GH5Neck.read_async(gh5neck_addr, &gh5neck_curslider, sizeof(gh5neck_curslider), true);
+    // don't finish here, we count on using the 0.5ms this takes to do other crap and account for the delay accordingly
     //gh5neck_i2c_finish();
   }
 }
@@ -393,12 +390,6 @@ void MPU9250SelfTest(float * destination) // Should return percent deviation fro
     destination[i + 3] = 100.0 * ((float)(gSTAvg[i] - gAvg[i])) / factoryTrim[i + 3] - 100.; // Report percent differences
   }
 }
-
-
-
-
-
-
 
 void getAres() {
   switch (Ascale)
@@ -781,7 +772,6 @@ void readAccelData(int16_t * destination)
   destination[2] = ((int16_t)rawData[4] << 8) | rawData[5] ;
 }
 
-
 void readGyroData(int16_t * destination)
 {
   uint8_t rawData[6];  // x/y/z gyro register data stored here
@@ -852,8 +842,6 @@ void setup() {
 #endif
 
   // MPU9250 setup
-  //writeByte(mpu9250_addr, MPU9250_PWR_MGMT_1, MPU9250_BIT_RESET);
-  //writeByte(mpu9250_addr, MPU9250_PWR_MGMT_1, 0);
   uint8_t whoami = readByte(mpu9250_addr, MPU9250_WHO_AM_I);
 #ifdef DEBUG
   Serial.print( "MPU9250 Who Am I?: 0x" );
