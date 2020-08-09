@@ -931,11 +931,10 @@ void loop() {
   gy = (float)MPU9250Data[5] * gRes;
   gz = (float)MPU9250Data[6] * gRes;
   UpdateWhammy();
-  UpdateButtons();
 
-  while ( sinceSend < 900 ) {
+  do {
     UpdateButtons();
-  }
+  } while ( sinceSend < 900 );
 
   // our dpad will actually allow all buttons to be pressed.
   // we can use that for programming purposes, but for now,
@@ -982,6 +981,9 @@ void loop() {
       select = true;
       // Hold pedal/select for 20ms. Discovered during testing on GH3 instead of CH
       pedalCyclesOn = -20;
+    } else {
+      // ensure we're reset
+      pedalCyclesOn = 0;
     }
   }
 
