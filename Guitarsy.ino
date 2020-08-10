@@ -8,6 +8,17 @@
 #include "MPU9250_RegisterMap.h"
 
 
+// must be greater than 125
+// values under 500 are not guaranteed to work with I2C devices attached
+// values under 1000 will presumably just be buffered in most kernels
+// Only 480Mb/s USB devices can do 125us updates.
+// 12Mb/s USB is limited to 1ms.
+#ifdef __IMXRT1062__
+#define UPDATE_RATE_US 500
+#else
+#define UPDATE_RATE_US 1000
+#endif
+
 #ifdef USE_WIRE
 #include <Wire.h>
 #else
@@ -934,7 +945,7 @@ void loop() {
 
   do {
     UpdateButtons();
-  } while ( sinceSend < 900 );
+  } while ( sinceSend < UPDATE_RATE_US - 100 );
 
   // our dpad will actually allow all buttons to be pressed.
   // we can use that for programming purposes, but for now,
@@ -1080,7 +1091,7 @@ void loop() {
     bootloaderCounter = -1;
   }
 
-  while ( sinceSend <= 1000 ) {
+  while ( sinceSend <= UPDATE_RATE_US ) {
     ;
   }
 #if defined(USB_XINPUT_GUITAR)
@@ -1091,7 +1102,7 @@ void loop() {
 #elif defined(USB_HID) || defined(USB_SERIAL_HID)
   Joystick.send_now();
 #endif
-  sinceSend -= 1000;
+  sinceSend -= UPDATE_RATE_US;
 
 #ifdef DEBUG
   /*
