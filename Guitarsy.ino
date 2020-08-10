@@ -19,6 +19,8 @@
 #define UPDATE_RATE_US 1000
 #endif
 
+#define BOOTLOADER_KEYPRESS_DELAY 5000
+
 #ifdef USE_WIRE
 #include <Wire.h>
 #else
@@ -1079,7 +1081,7 @@ void loop() {
   Joystick.Y( acceleroToJY );
 #endif
 
-  if ( bootloaderCounter > 5000 ) {
+  if ( bootloaderCounter > BOOTLOADER_KEYPRESS_DELAY ) {
     bootloaderCounter++;
     goto skipSend;
   }
@@ -1119,22 +1121,22 @@ void loop() {
 
 skipSend:
   sinceSend = 0;
-  if ( bootloaderCounter >= 5000 ) {
-    if ( bootloaderCounter >= 9000 ) {
+  if ( bootloaderCounter >= BOOTLOADER_KEYPRESS_DELAY ) {
+    if ( bootloaderCounter >= BOOTLOADER_KEYPRESS_DELAY + 4000 ) {
       digitalWrite(PIN_DPADLED, LOW);
-    } else if ( bootloaderCounter >= 8000 ) {
+    } else if ( bootloaderCounter >= BOOTLOADER_KEYPRESS_DELAY + 3000 ) {
       digitalWrite(PIN_DPADLED, HIGH);
-    } else if ( bootloaderCounter >= 7000 ) {
+    } else if ( bootloaderCounter >= BOOTLOADER_KEYPRESS_DELAY + 2000 ) {
       digitalWrite(PIN_DPADLED, LOW);
-    } else if ( bootloaderCounter >= 6000 ) {
+    } else if ( bootloaderCounter >= BOOTLOADER_KEYPRESS_DELAY + 1000 ) {
       digitalWrite(PIN_DPADLED, HIGH);
     } else {
       digitalWrite(PIN_DPADLED, LOW);
     }
 #ifdef __IMXRT1062__
-    if ( bootloaderCounter == 5000 ) {
+    if ( bootloaderCounter == BOOTLOADER_KEYPRESS_DELAY ) {
       usb_start_sof_interrupts(NUM_INTERFACE);
-    } else if ( bootloaderCounter >= 10000 ) {
+    } else if ( bootloaderCounter >= BOOTLOADER_KEYPRESS_DELAY + 5000 ) {
       usb_stop_sof_interrupts(NUM_INTERFACE);
       asm("bkpt #251");
     }
