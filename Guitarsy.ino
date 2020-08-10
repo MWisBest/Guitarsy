@@ -5,6 +5,13 @@
 #define DEBUG
 #endif
 
+
+#if defined(__IMXRT1062__)
+#define TEENSY_VERSION 4
+#elif (defined(__MK20DX128__) || defined(__MK20DX256__) || defined(__MKL26Z64__) || defined(__MK64FX512__) || defined(__MK66FX1M0__))
+#define TEENSY_VERSION 3
+#endif
+
 #include "MPU9250_RegisterMap.h"
 
 
@@ -13,7 +20,7 @@
 // values under 1000 will presumably just be buffered in most kernels
 // Only 480Mb/s USB devices can do 125us updates.
 // 12Mb/s USB is limited to 1ms.
-#ifdef __IMXRT1062__
+#if TEENSY_VERSION == 4
 #define UPDATE_RATE_US 500
 #else
 #define UPDATE_RATE_US 1000
@@ -24,13 +31,13 @@
 #ifdef USE_WIRE
 #include <Wire.h>
 #else
-#ifdef __IMXRT1062__
+#if TEENSY_VERSION == 4
 #include <i2c_driver.h>
 #include "imx_rt1060/imx_rt1060_i2c_driver.h"
 #endif
 #endif
 
-#ifdef __IMXRT1062__
+#ifdef TEENSY_VERSION == 4
 #include "usb_dev.h"
 #endif
 
@@ -1133,14 +1140,14 @@ skipSend:
     } else {
       digitalWrite(PIN_DPADLED, LOW);
     }
-#ifdef __IMXRT1062__
+#if TEENSY_VERSION == 4
     if ( bootloaderCounter == BOOTLOADER_KEYPRESS_DELAY ) {
       usb_start_sof_interrupts(NUM_INTERFACE);
     } else if ( bootloaderCounter >= BOOTLOADER_KEYPRESS_DELAY + 5000 ) {
       usb_stop_sof_interrupts(NUM_INTERFACE);
       asm("bkpt #251");
     }
-#elif (defined(__MK20DX128__) || defined(__MK20DX256__) || defined(__MKL26Z64__) || defined(__MK64FX512__) || defined(__MK66FX1M0__))
+#elif TEENSY_VERSION == 3
     __asm__ volatile("bkpt");
 #endif
   }
